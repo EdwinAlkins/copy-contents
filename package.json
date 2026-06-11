@@ -1,16 +1,21 @@
 {
   "name": "copy-contents",
   "displayName": "copy-contents",
-  "description": "Copy all file in presse papier",
-  "version": "0.0.2",
+  "description": "Copy all files to clipboard",
+  "version": "0.0.3",
   "publisher": "edwinalkins",
+  "keywords": ["clipboard", "copy", "folder", "files", "content"],
   "engines": {
     "vscode": "^1.105.1"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Files"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:copy-contents.copy",
+    "onCommand:copy-contents.copyWithSelection"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -58,7 +63,7 @@
           "items": {
             "type": "string"
           },
-          "description": "The list of extensions to copy"
+          "description": "The list of file extensions to copy"
         },
         "copyContents.excludedFolders": {
           "type": "array",
@@ -69,17 +74,30 @@
             ".idea",
             ".pytest_cache",
             ".venv",
-            "venv"
+            "venv",
+            "node_modules",
+            "__MACOSX",
+            "Thumbs.db"
           ],
           "items": {
             "type": "string"
           },
-          "description": "The list of folders to exclude"
+          "description": "The list of folders to exclude from copying"
         },
         "copyContents.maxFiles": {
           "type": "number",
           "default": 100,
           "description": "The maximum number of files to copy"
+        },
+        "copyContents.maxFileSize": {
+          "type": "number",
+          "default": 1048576,
+          "description": "The maximum file size in bytes to copy (default: 1MB)"
+        },
+        "copyContents.copyWithoutHeaders": {
+          "type": "boolean",
+          "default": false,
+          "description": "Copy file contents without file name headers"
         }
       }
     }

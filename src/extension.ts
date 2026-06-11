@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
-import { getConfig } from './config';
+import { getConfig, CopyContentsConfig } from './config';
+import { MESSAGES } from './messages';
 
 export function activate(context: vscode.ExtensionContext) {
 	const disposable = vscode.commands.registerCommand('copy-contents.copy', async (uri: vscode.Uri | undefined) => {
@@ -16,54 +17,32 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 async function executeCopy(uri: vscode.Uri | undefined) {
-	if (!uri) {
-		vscode.window.showErrorMessage("No folder selected. Right-click a folder in the Explorer.");
-		return;
-	}
+	const validation = await validateFolderPath(uri);
+	if (!validation) {return;}
 
-	const folderPath = uri.fsPath;
-	const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-	const rootPath = workspaceFolder ? workspaceFolder.uri.fsPath : folderPath;
-
+	const { folderPath, uriObject } = validation;
+	const rootPath = getRootPath(uriObject, folderPath);
 	const config = getConfig();
-	const filesToCopy = getAllFiles(folderPath, config.extensions, config.excludedFolders, config.maxFiles);
-	await copyFilesContent(filesToCopy, rootPath);
+	const filesToCopy = await getAllFiles(folderPath, config);
+	await copyFilesContent(filesToCopy, rootPath, config);
 }
 
 async function executeCopyWithSelection(uri: vscode.Uri | undefined) {
-	if (!uri) {
-		vscode.window.showErrorMessage("No folder selected. Right-click a folder in the Explorer.");
-		return;
-	}
+	const validation = await validateFolderPath(uri);
+	if (!validation) {return;}
 
-	const folderPath = uri.fsPath;
-	const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-	const rootPath = workspaceFolder ? workspaceFolder.uri.fsPath : folderPath;
+	const { folderPath, uriObject } = validation;
+	const rootPath = getRootPath(uriObject, folderPath);
 	const config = getConfig();
-
-	const allFiles = getAllFiles(folderPath, config.extensions, config.excludedFolders, config.maxFiles);
+	const allFiles = await getAllFiles(folderPath, config);
 
 	if (allFiles.length === 0) {
-		vscode.window.showInformationMessage("No files found for the configured extensions.");
+		vscode.window.showInformationMessage(MESSAGES.ERROR.NO_FILES_FOUND);
 		return;
 	}
 
-	// Group files by directory, sorted alphabetically
-	const byDir = new Map<string, { label: string; description: string; picked: true; absolutePath: string }[]>();
-	for (const filePath of allFiles) {
-		const rel = path.relative(rootPath, filePath).replace(/\\/g, '/');
-		const dir = path.dirname(rel) === '.' ? '/' : path.dirname(rel) + '/';
-		if (!byDir.has(dir)) {
-			byDir.set(dir, []);
-		}
-		byDir.get(dir)!.push({ label: path.basename(filePath), description: rel, picked: true, absolutePath: filePath });
-	}
-
-	const items: vscode.QuickPickItem[] = [];
-	for (const [dir, files] of [...byDir.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-		items.push({ label: dir, kind: vscode.QuickPickItemKind.Separator });
-		items.push(...files);
-	}
+	const byDir = groupFilesByDirectory(allFiles, rootPath);
+	const items = buildQuickPickItems(byDir);
 
 	const selected = await vscode.window.showQuickPick(items, {
 		canPickMany: true,
@@ -71,65 +50,152 @@ async function executeCopyWithSelection(uri: vscode.Uri | undefined) {
 		title: 'Copy Folder Contents',
 	});
 
-	if (!selected || selected.length === 0) {
-		return;
-	}
+	if (!selected || selected.length === 0) {return;}
 
 	const selectedPaths = selected
 		.map(item => (item as { absolutePath?: string }).absolutePath)
 		.filter((p): p is string => p !== undefined);
 
-	await copyFilesContent(selectedPaths, rootPath);
+	await copyFilesContent(selectedPaths, rootPath, config);
 }
 
-async function copyFilesContent(filePaths: string[], rootPath: string) {
-	let finalText = "";
-
-	for (const filePath of filePaths) {
-		try {
-			const relativePath = path.relative(rootPath, filePath).replace(/\\/g, '/');
-			finalText += `\n\n--- Fichier : ${relativePath} ---\n\n`;
-			finalText += fs.readFileSync(filePath, 'utf8');
-		} catch (error) {
-			console.error(`Failed to read ${filePath}:`, error);
-		}
+async function validateFolderPath(uri: vscode.Uri | undefined): Promise<{ folderPath: string; uriObject: vscode.Uri } | null> {
+	if (!uri) {
+		vscode.window.showErrorMessage(MESSAGES.ERROR.NO_FOLDER_SELECTED);
+		return null;
 	}
+
+	const folderPath = uri.fsPath;
+	
+	try {
+		const stat = await fs.stat(folderPath);
+		if (!stat.isDirectory()) {
+			vscode.window.showErrorMessage(MESSAGES.ERROR.NOT_A_DIRECTORY);
+			return null;
+		}
+	} catch {
+		vscode.window.showErrorMessage(MESSAGES.ERROR.FOLDER_DOES_NOT_EXIST);
+		return null;
+	}
+
+	return { folderPath, uriObject: uri };
+}
+
+function getRootPath(uri: vscode.Uri, folderPath: string): string {
+	const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+	return workspaceFolder ? workspaceFolder.uri.fsPath : folderPath;
+}
+
+async function copyFilesContent(filePaths: string[], rootPath: string, config: CopyContentsConfig) {
+	const contents = await Promise.all(
+		filePaths.map(async (filePath) => {
+			try {
+				const stat = await fs.stat(filePath);
+				if (stat.size > config.maxFileSize) {
+					console.warn(MESSAGES.ERROR.FILE_TOO_LARGE(filePath, stat.size, config.maxFileSize));
+					vscode.window.showWarningMessage(MESSAGES.ERROR.FILE_TOO_LARGE(path.basename(filePath), stat.size, config.maxFileSize));
+					return null;
+				}
+				
+				const relativePath = path.relative(rootPath, filePath).replace(/\\/g, '/');
+				const fileContent = await fs.readFile(filePath, 'utf8');
+				
+				if (config.copyWithoutHeaders) {
+					return fileContent;
+				}
+				return `\n\n--- File: ${relativePath} ---\n\n${fileContent}`;
+			} catch (error) {
+				console.error(MESSAGES.ERROR.FILE_READ_ERROR(filePath), error);
+				vscode.window.showWarningMessage(MESSAGES.ERROR.FILE_READ_ERROR(filePath));
+				return null;
+			}
+		})
+	);
+
+	const validContents = contents.filter((content): content is string => content !== null);
+	const finalText = validContents.join('');
+
+	if (validContents.length === 0) {return;}
 
 	try {
 		await vscode.env.clipboard.writeText(finalText);
-		vscode.window.showInformationMessage(`${filePaths.length} file(s) copied to clipboard.`);
+		vscode.window.showInformationMessage(MESSAGES.SUCCESS.FILES_COPY(validContents.length));
 	} catch (error) {
-		console.error('Clipboard write failed:', error);
-		vscode.window.showErrorMessage("Failed to write to clipboard.");
+		console.error(MESSAGES.ERROR.CLIPBOARD_WRITE_FAILED, error);
+		vscode.window.showErrorMessage(MESSAGES.ERROR.CLIPBOARD_WRITE_FAILED);
 	}
 }
 
-function getAllFiles(folderPath: string, allowedExtensions: string[], excludFolder: string[], maxFiles: number): string[] {
+async function getAllFiles(folderPath: string, config: CopyContentsConfig): Promise<string[]> {
 	let results: string[] = [];
 
 	try {
-		const list = fs.readdirSync(folderPath);
+		const list = await fs.readdir(folderPath);
 
 		for (const item of list) {
+			if (results.length >= config.maxFiles) {break;}
+
 			const fullPath = path.join(folderPath, item);
-			const stat = fs.statSync(fullPath);
+			const stat = await fs.stat(fullPath);
 
 			if (stat.isDirectory()) {
-				if (!excludFolder.includes(item) && results.length < maxFiles) {
-					results = results.concat(getAllFiles(fullPath, allowedExtensions, excludFolder, maxFiles - results.length));
+				if (!config.excludedFolders.includes(item)) {
+					const subFiles = await getAllFiles(fullPath, {
+						...config,
+						maxFiles: config.maxFiles - results.length,
+					});
+					results = results.concat(subFiles);
 				}
 			} else {
-				const ext = path.extname(item);
-				if ((allowedExtensions.length === 0 || allowedExtensions.includes(ext)) && results.length < maxFiles) {
+				const ext = path.extname(item).toLowerCase();
+				const allowedExt = config.extensions.map(e => e.toLowerCase());
+				
+				if (allowedExtensionsMatch(ext, allowedExt, config.extensions) && results.length < config.maxFiles) {
 					results.push(fullPath);
 				}
 			}
 		}
 	} catch (error) {
-		console.error(`Failed to read directory ${folderPath}:`, error);
+		console.error(MESSAGES.ERROR.DIRECTORY_READ_ERROR(folderPath), error);
 	}
 
 	return results;
+}
+
+function allowedExtensionsMatch(fileExt: string, allowedExt: string[], originalAllowed: string[]): boolean {
+	// If no extensions configured, allow all
+	if (originalAllowed.length === 0) {return true;}
+	// Check against lowercase versions
+	return allowedExt.includes(fileExt);
+}
+
+function groupFilesByDirectory(filePaths: string[], rootPath: string): Map<string, { label: string; description: string; picked: true; absolutePath: string }[]> {
+	const byDir = new Map<string, { label: string; description: string; picked: true; absolutePath: string }[]>();
+
+	for (const filePath of filePaths) {
+		const rel = path.relative(rootPath, filePath).replace(/\\/g, '/');
+		const dir = path.dirname(rel) === '.' ? '/' : path.dirname(rel) + '/';
+		if (!byDir.has(dir)) {
+			byDir.set(dir, []);
+		}
+		byDir.get(dir)!.push({ 
+			label: path.basename(filePath), 
+			description: rel, 
+			picked: true, 
+			absolutePath: filePath 
+		});
+	}
+
+	return byDir;
+}
+
+function buildQuickPickItems(byDir: Map<string, { label: string; description: string; picked: true; absolutePath: string }[]>): vscode.QuickPickItem[] {
+	const items: vscode.QuickPickItem[] = [];
+	for (const [dir, files] of [...byDir.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+		items.push({ label: dir, kind: vscode.QuickPickItemKind.Separator });
+		items.push(...files);
+	}
+	return items;
 }
 
 export function deactivate() {}

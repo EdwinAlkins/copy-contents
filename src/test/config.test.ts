@@ -16,7 +16,7 @@ suite('Config Test Suite', () => {
         sinon.restore();
     });
 
-    test('getConfig retourne les valeurs par défaut si rien n\'est configuré', () => {
+    test('getConfig returns default values when nothing is configured', () => {
         const mockConfig = {
             get: (key: string, defaultValue: any) => defaultValue
         };
@@ -25,22 +25,20 @@ suite('Config Test Suite', () => {
         const config = getConfig();
 
         assert.deepStrictEqual(config.extensions, ['.ts', '.js', '.json', '.md', '.py', '.yaml']);
-        assert.deepStrictEqual(config.excludedFolders, ['node_modules', '.git', '.vscode', '.DS_Store', '.idea', '.pytest_cache', '.venv', 'venv']);
+        assert.deepStrictEqual(config.excludedFolders, ['node_modules', '.git', '.vscode', '.DS_Store', '.idea', '.pytest_cache', '.venv', 'venv', '__MACOSX', 'Thumbs.db']);
         assert.strictEqual(config.maxFiles, 100);
+        assert.strictEqual(config.maxFileSize, 1024 * 1024);
+        assert.strictEqual(config.copyWithoutHeaders, false);
     });
 
-    test('getConfig retourne les valeurs de l\'utilisateur', () => {
+    test('getConfig returns user values', () => {
         const mockConfig = {
             get: (key: string, defaultValue: any) => {
-                if (key === 'extensions'){ 
-                    return ['.txt'];
-                }
-                if (key === 'excludedFolders'){ 
-                    return ['dist'];
-                }
-                if (key === 'maxFiles'){ 
-                    return 50;
-                }
+                if (key === 'extensions') {return ['.txt'];}
+                if (key === 'excludedFolders') {return ['dist'];}
+                if (key === 'maxFiles') {return 50;}
+                if (key === 'maxFileSize') {return 524288;}
+                if (key === 'copyWithoutHeaders') {return true;}
                 return defaultValue;
             }
         };
@@ -51,5 +49,7 @@ suite('Config Test Suite', () => {
         assert.deepStrictEqual(config.extensions, ['.txt']);
         assert.deepStrictEqual(config.excludedFolders, ['dist']);
         assert.strictEqual(config.maxFiles, 50);
+        assert.strictEqual(config.maxFileSize, 524288);
+        assert.strictEqual(config.copyWithoutHeaders, true);
     });
 });

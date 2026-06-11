@@ -1,22 +1,26 @@
 import * as assert from 'assert';
 import vscode = require('vscode');
 import * as sinon from 'sinon';
-import fs = require('fs');
+import * as fs from 'fs/promises';
+import { Stats } from 'fs';
 import { activate, deactivate } from '../extension';
+import { MESSAGES } from '../messages';
 
 suite('Extension Test Suite', () => {
     let commandCallback: any;
+    let commandSelectionCallback: any;
 
     setup(() => {
-        // On intercepte l'enregistrement de la commande pour récupérer la fonction interne
         sinon.stub(vscode.commands, 'registerCommand').callsFake((cmd, cb) => {
             if (cmd === 'copy-contents.copy') {
                 commandCallback = cb;
             }
+            if (cmd === 'copy-contents.copyWithSelection') {
+                commandSelectionCallback = cb;
+            }
             return { dispose: () => {} };
         });
 
-        // On active l'extension en lui passant un faux contexte
         const context = { subscriptions: [] } as any;
         activate(context);
     });
@@ -25,62 +29,80 @@ suite('Extension Test Suite', () => {
         sinon.restore();
     });
 
-    test('Deactivate ne lève aucune erreur', () => {
+    test('Deactivate does not throw any error', () => {
         assert.doesNotThrow(() => deactivate());
     });
 
-    test('La commande affiche une erreur si aucune URI n\'est fournie', async () => {
+    test('Command shows error if no URI is provided', async () => {
         const showErrorStub = sinon.stub(vscode.window, 'showErrorMessage');
         
         await commandCallback(undefined);
         
-        assert.ok(showErrorStub.calledWith("Aucun dossier sélectionné. Veuillez faire un clic droit sur un dossier."));
+        assert.ok(showErrorStub.calledWith(MESSAGES.ERROR.NO_FOLDER_SELECTED));
     });
 
-    test('La commande copie les fichiers avec succès (récursion & filtrage)', async () => {
+    test('Command shows error if path is not a directory', async () => {
+        const mockUri = vscode.Uri.file('/mock/file.txt');
+        const showErrorStub = sinon.stub(vscode.window, 'showErrorMessage');
+        
+        sinon.stub(fs, 'stat').resolves({ isDirectory: () => false } as Stats);
+        
+        await commandCallback(mockUri);
+        
+        assert.ok(showErrorStub.calledWith(MESSAGES.ERROR.NOT_A_DIRECTORY));
+    });
+
+    test('Command shows error if folder does not exist', async () => {
+        const mockUri = vscode.Uri.file('/nonexistent/path');
+        const showErrorStub = sinon.stub(vscode.window, 'showErrorMessage');
+        
+        sinon.stub(fs, 'stat').rejects(new Error('Not found'));
+        
+        await commandCallback(mockUri);
+        
+        assert.ok(showErrorStub.calledWith(MESSAGES.ERROR.FOLDER_DOES_NOT_EXIST));
+    });
+
+    test('Command copies files successfully with recursion and filtering', async () => {
         const mockUri = vscode.Uri.file('/mock/path');
 
-        // Mock du workspace
         sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns({
             uri: vscode.Uri.file('/mock'),
             name: 'mock',
             index: 0
         });
 
-        // Mock de la configuration
         sinon.stub(vscode.workspace, 'getConfiguration').returns({
             get: (key: string, def: any) => {
-                if (key === 'extensions') {
-                    return ['.ts'];
-                }
-                if (key === 'excludedFolders') {
-                    return ['node_modules'];
-                }
-                if (key === 'maxFiles') {
-                    return 10;
-                }
+                if (key === 'extensions') {return ['.ts'];}
+                if (key === 'excludedFolders') {return ['node_modules'];}
+                if (key === 'maxFiles') {return 10;}
+                if (key === 'maxFileSize') {return 1048576;}
+                if (key === 'copyWithoutHeaders') {return false;}
                 return def;
             }
         } as any);
 
-        // Mock du système de fichiers
-        const readdirStub = sinon.stub(fs, 'readdirSync');
-        const statStub = sinon.stub(fs, 'statSync');
-        const readFileStub = sinon.stub(fs, 'readFileSync');
+        const readdirStub = sinon.stub(fs, 'readdir');
+        const statStub = sinon.stub(fs, 'stat');
+        const readFileStub = sinon.stub(fs, 'readFile');
 
-        readdirStub.withArgs(sinon.match(/path$/)).returns(['file1.ts', 'file2.js', 'node_modules', 'sub'] as any);
-        readdirStub.withArgs(sinon.match(/sub$/)).returns(['file3.ts', 'file4.ts'] as any);
+        readdirStub.withArgs('/mock/path').resolves(['file1.ts', 'file2.js', 'node_modules', 'sub'] as any);
+        readdirStub.withArgs('/mock/path/sub').resolves(['file3.ts', 'file4.ts'] as any);
+        readdirStub.withArgs('/mock/path/node_modules').resolves([] as any);
 
         statStub.callsFake((filePath: any) => {
             const p = filePath.toString();
-            return { isDirectory: () => p.endsWith('node_modules') || p.endsWith('sub') } as fs.Stats;
+            if (p.endsWith('node_modules') || p.endsWith('sub')) {
+                return Promise.resolve({ isDirectory: () => true, size: 100 } as Stats);
+            }
+            return Promise.resolve({ isDirectory: () => false, size: 100 } as Stats);
         });
 
-        readFileStub.withArgs(sinon.match(/file1\.ts$/)).returns('content1');
-        readFileStub.withArgs(sinon.match(/file3\.ts$/)).returns('content3');
-        readFileStub.withArgs(sinon.match(/file4\.ts$/)).throws(new Error('Read error'));
+        readFileStub.withArgs('/mock/path/file1.ts').resolves('content1');
+        readFileStub.withArgs('/mock/path/sub/file3.ts').resolves('content3');
+        readFileStub.withArgs('/mock/path/sub/file4.ts').rejects(new Error('Read error'));
 
-        // Mock du presse-papiers
         const clipboardStub = sinon.stub().resolves();
         sinon.stub(vscode.env, 'clipboard').get(() => ({
             writeText: clipboardStub,
@@ -88,30 +110,153 @@ suite('Extension Test Suite', () => {
         }));
 
         const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage');
-        
-        // On rend le stub muet pour nettoyer la console pendant les tests
-        const consoleErrorStub = sinon.stub(console, 'error'); 
+        const consoleErrorStub = sinon.stub(console, 'error');
+        const showWarningStub = sinon.stub(vscode.window, 'showWarningMessage');
 
         await commandCallback(mockUri);
 
         assert.ok(clipboardStub.calledOnce);
         const clipboardText = clipboardStub.firstCall.args[0];
         
-        assert.ok(clipboardText.includes('content1'), 'Le presse-papiers doit contenir file1.ts');
-        assert.ok(clipboardText.includes('content3'), 'Le presse-papiers doit contenir file3.ts dans le sous-dossier');
-        assert.ok(!clipboardText.includes('file2.js'), 'Ne doit pas inclure les extensions non autorisées');
+        assert.ok(clipboardText.includes('content1'), 'Clipboard must contain file1.ts');
+        assert.ok(clipboardText.includes('content3'), 'Clipboard must contain file3.ts in subfolder');
+        assert.ok(!clipboardText.includes('file2.js'), 'Must not include unauthorized extensions');
+        assert.ok(clipboardText.includes('--- File:'), 'Must include file headers');
 
-        // Ajout de sinon.match.any pour valider le 2ème argument (l'objet d'erreur)
-        assert.ok(consoleErrorStub.calledWith(sinon.match(/Erreur lors de la lecture du fichier/), sinon.match.any));
-        assert.ok(showInfoStub.calledWith('Fichiers copiés dans le presse-papiers avec succès !'));
+        assert.ok(consoleErrorStub.calledWith(sinon.match(/Failed to read file/), sinon.match.any));
+        assert.ok(showWarningStub.calledWith(sinon.match(/Failed to read file/)));
+        assert.ok(showInfoStub.calledWith(MESSAGES.SUCCESS.FILES_COPY(2)));
     });
 
-    test('Gestion des erreurs du presse-papiers (copyTextToClipboard catch)', async () => {
+    test('Command respects maxFiles limit', async () => {
         const mockUri = vscode.Uri.file('/mock/path');
-        sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined); 
-        sinon.stub(fs, 'readdirSync').returns([]); 
-        
-        // Mock du presse-papiers (Cas d'erreur)
+
+        sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        sinon.stub(vscode.workspace, 'getConfiguration').returns({
+            get: (key: string, def: any) => {
+                if (key === 'extensions') {return [];}
+                if (key === 'excludedFolders') {return [];}
+                if (key === 'maxFiles') {return 1;}
+                if (key === 'maxFileSize') {return 1048576;}
+                if (key === 'copyWithoutHeaders') {return false;}
+                return def;
+            }
+        } as any);
+
+        const readdirStub = sinon.stub(fs, 'readdir');
+        const statStub = sinon.stub(fs, 'stat');
+        const readFileStub = sinon.stub(fs, 'readFile');
+
+        readdirStub.withArgs('/mock/path').resolves(['file1.txt', 'subDir'] as any);
+        readdirStub.withArgs('/mock/path/subDir').resolves(['file2.txt'] as any);
+
+        statStub.callsFake((filePath: any) => {
+            const p = filePath.toString();
+            return Promise.resolve({
+                isDirectory: () => p.endsWith('subDir'),
+                size: 100
+            } as Stats);
+        });
+
+        readFileStub.resolves('content');
+
+        const clipboardStub = sinon.stub().resolves();
+        sinon.stub(vscode.env, 'clipboard').get(() => ({
+            writeText: clipboardStub,
+            readText: async () => ''
+        }));
+
+        await commandCallback(mockUri);
+
+        const clipboardText = clipboardStub.firstCall.args[0];
+        assert.strictEqual(clipboardText.split('--- File:').length - 1, 1, 'Should only copy 1 file due to maxFiles limit');
+    });
+
+    test('Command respects maxFileSize limit', async () => {
+        const mockUri = vscode.Uri.file('/mock/path');
+
+        sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        sinon.stub(vscode.workspace, 'getConfiguration').returns({
+            get: (key: string, def: any) => {
+                if (key === 'extensions') {return ['.txt'];}
+                if (key === 'excludedFolders') {return [];}
+                if (key === 'maxFiles') {return 100;}
+                if (key === 'maxFileSize') {return 100;}
+                if (key === 'copyWithoutHeaders') {return false;}
+                return def;
+            }
+        } as any);
+
+        const readdirStub = sinon.stub(fs, 'readdir');
+        const statStub = sinon.stub(fs, 'stat');
+
+        readdirStub.withArgs('/mock/path').resolves(['large.txt', 'small.txt'] as any);
+
+        statStub.callsFake((filePath: any) => {
+            const p = filePath.toString();
+            if (p.endsWith('large.txt')) {
+                return Promise.resolve({ isDirectory: () => false, size: 200 } as Stats);
+            }
+            return Promise.resolve({ isDirectory: () => false, size: 50 } as Stats);
+        });
+
+        const clipboardStub = sinon.stub().resolves();
+        sinon.stub(vscode.env, 'clipboard').get(() => ({
+            writeText: clipboardStub,
+            readText: async () => ''
+        }));
+
+        const showWarningStub = sinon.stub(vscode.window, 'showWarningMessage');
+
+        await commandCallback(mockUri);
+
+        assert.ok(showWarningStub.calledWith(sinon.match(/exceeds max size/)));
+        const clipboardText = clipboardStub.firstCall.args[0];
+        assert.ok(!clipboardText.includes('large.txt'), 'Large file should be skipped');
+        assert.ok(clipboardText.includes('small.txt'), 'Small file should be included');
+    });
+
+    test('Command with copyWithoutHeaders option removes file headers', async () => {
+        const mockUri = vscode.Uri.file('/mock/path');
+
+        sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        sinon.stub(vscode.workspace, 'getConfiguration').returns({
+            get: (key: string, def: any) => {
+                if (key === 'extensions') {return ['.txt'];}
+                if (key === 'excludedFolders') {return [];}
+                if (key === 'maxFiles') {return 100;}
+                if (key === 'maxFileSize') {return 1048576;}
+                if (key === 'copyWithoutHeaders') {return true;}
+                return def;
+            }
+        } as any);
+
+        const readdirStub = sinon.stub(fs, 'readdir');
+        const statStub = sinon.stub(fs, 'stat');
+        const readFileStub = sinon.stub(fs, 'readFile');
+
+        readdirStub.withArgs('/mock/path').resolves(['file1.txt'] as any);
+        statStub.resolves({ isDirectory: () => false, size: 100 } as Stats);
+        readFileStub.withArgs('/mock/path/file1.txt').resolves('content1');
+
+        const clipboardStub = sinon.stub().resolves();
+        sinon.stub(vscode.env, 'clipboard').get(() => ({
+            writeText: clipboardStub,
+            readText: async () => ''
+        }));
+
+        await commandCallback(mockUri);
+
+        const clipboardText = clipboardStub.firstCall.args[0];
+        assert.ok(!clipboardText.includes('--- File:'), 'Headers should be removed');
+        assert.strictEqual(clipboardText, 'content1', 'Should only contain file content');
+    });
+
+    test('Clipboard write error is handled', async () => {
+        const mockUri = vscode.Uri.file('/mock/path');
+        sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        sinon.stub(fs, 'readdir').resolves([] as any);
+
         const clipboardStub = sinon.stub().rejects(new Error('Clipboard error'));
         sinon.stub(vscode.env, 'clipboard').get(() => ({
             writeText: clipboardStub,
@@ -124,55 +269,47 @@ suite('Extension Test Suite', () => {
         await commandCallback(mockUri);
 
         assert.ok(clipboardStub.calledOnce);
-        assert.ok(showErrorStub.calledWith("Une erreur est survenue lors de la copie dans le presse-papiers."));
-        
-        // Ajout de sinon.match.any pour le 2ème argument
-        assert.ok(consoleErrorStub.calledWith('Erreur lors de la copie:', sinon.match.any));
+        assert.ok(showErrorStub.calledWith(MESSAGES.ERROR.CLIPBOARD_WRITE_FAILED));
+        assert.ok(consoleErrorStub.calledWith(MESSAGES.ERROR.CLIPBOARD_WRITE_FAILED, sinon.match.any));
     });
 
-    test('getAllFiles respecte maxFiles, les extensions vides, et attrape les erreurs FS', async () => {
-         const mockUri = vscode.Uri.file('/mock/path');
+    test('Directory read error is handled', async () => {
+        const mockUri = vscode.Uri.file('/mock/path');
+        sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        
+        sinon.stub(fs, 'stat').resolves({ isDirectory: () => true } as Stats);
+        sinon.stub(fs, 'readdir').rejects(new Error('FS Permission Error'));
 
-         sinon.stub(vscode.workspace, 'getConfiguration').returns({
+        const consoleErrorStub = sinon.stub(console, 'error');
+        const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage');
+
+        await commandCallback(mockUri);
+
+        assert.ok(consoleErrorStub.calledWith(sinon.match(/Failed to read directory/), sinon.match.any));
+        assert.ok(!showInfoStub.called);
+    });
+
+    test('No files found shows information message', async () => {
+        const mockUri = vscode.Uri.file('/mock/path');
+        sinon.stub(vscode.workspace, 'getWorkspaceFolder').returns(undefined);
+        sinon.stub(vscode.workspace, 'getConfiguration').returns({
             get: (key: string, def: any) => {
-                if (key === 'extensions') {
-                    return []; 
-                }
-                if (key === 'maxFiles') {
-                    return 1; 
-                }
+                if (key === 'extensions') {return ['.ts'];}
+                if (key === 'excludedFolders') {return [];}
+                if (key === 'maxFiles') {return 100;}
+                if (key === 'maxFileSize') {return 1048576;}
+                if (key === 'copyWithoutHeaders') {return false;}
                 return def;
             }
         } as any);
 
-        const readdirStub = sinon.stub(fs, 'readdirSync');
-        const statStub = sinon.stub(fs, 'statSync');
+        sinon.stub(fs, 'stat').resolves({ isDirectory: () => true } as Stats);
+        sinon.stub(fs, 'readdir').resolves([] as any);
 
-        readdirStub.onFirstCall().returns(['file1.txt', 'subDir'] as any);
-        statStub.callsFake((filePath: any) => {
-            return { isDirectory: () => filePath.toString().endsWith('subDir') } as fs.Stats;
-        });
+        const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage');
 
-        // Mock du presse-papiers
-        const clipboardStub = sinon.stub().resolves();
-        sinon.stub(vscode.env, 'clipboard').get(() => ({
-            writeText: clipboardStub,
-            readText: async () => ''
-        }));
+        await commandSelectionCallback(mockUri);
 
-        sinon.stub(fs, 'readFileSync').returns('content');
-
-        await commandCallback(mockUri);
-
-        const clipboardText = clipboardStub.firstCall.args[0];
-        assert.strictEqual(clipboardText.split('--- Fichier').length - 1, 1);
-
-        readdirStub.onSecondCall().throws(new Error('FS Permission Error'));
-        const consoleErrorStub = sinon.stub(console, 'error');
-
-        await commandCallback(mockUri);
-        
-        // Ajout de sinon.match.any pour le 2ème argument
-        assert.ok(consoleErrorStub.calledWith(sinon.match(/Erreur lors de la lecture du dossier/), sinon.match.any));
+        assert.ok(showInfoStub.calledWith(MESSAGES.ERROR.NO_FILES_FOUND));
     });
 });
