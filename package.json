@@ -14,8 +14,7 @@
     "vscode": "^1.105.1"
   },
   "categories": [
-    "Other",
-    "Files"
+    "Other"
   ],
   "activationEvents": [
     "onCommand:copy-contents.copy",
