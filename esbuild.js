@@ -40,6 +40,15 @@ async function main() {
 		plugins: [
 			/* add to the end of plugins array */
 			esbuildProblemMatcherPlugin,
+			{
+				name: 'copy-icon',
+				setup(build) {
+					build.onEnd(() => {
+						const fs = require('fs');
+						fs.copyFileSync('icon.png', 'dist/icon.png');
+					});
+				}
+			}
 		],
 	});
 	if (watch) {
