@@ -10,6 +10,7 @@ export const MESSAGES = {
         MAX_FILES_REACHED: (count: number) => `Maximum files limit (${count}) reached.`,
         FILE_READ_ERROR: (filePath: string) => `Failed to read file: ${filePath}`,
         DIRECTORY_READ_ERROR: (dirPath: string) => `Failed to read directory: ${dirPath}`,
+        HEADER_FORMAT_MISSING: (filePath: string) => `Header format missing for file: ${filePath}`,
     },
     SUCCESS: {
         FILES_COPY: (count: number) => `${count} file(s) copied to clipboard.`,

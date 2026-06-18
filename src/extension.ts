@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { getConfig, CopyContentsConfig } from './config';
+import { getConfig, CopyContentsConfig, DEFAULT_HEADER_FORMAT } from './config';
 import { MESSAGES } from './messages';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -103,7 +103,13 @@ async function copyFilesContent(filePaths: string[], rootPath: string, config: C
 				if (config.copyWithoutHeaders) {
 					return fileContent;
 				}
-				return `\n\n--- File: ${relativePath} ---\n\n${fileContent}`;
+				let headerFormat: string = config.headerFormat;
+				if (!headerFormat.includes('{path}')) {
+					console.warn(MESSAGES.ERROR.HEADER_FORMAT_MISSING(filePath));
+					headerFormat = DEFAULT_HEADER_FORMAT;
+				}
+				const header = headerFormat.replace(/\{path\}/g, relativePath);
+				return `\n\n${header}\n\n${fileContent}`;
 			} catch (error) {
 				console.error(MESSAGES.ERROR.FILE_READ_ERROR(filePath), error);
 				vscode.window.showWarningMessage(MESSAGES.ERROR.FILE_READ_ERROR(filePath));

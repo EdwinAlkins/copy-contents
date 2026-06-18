@@ -1,10 +1,10 @@
-# Copy Folder Contents
+# Copy Contents
 
 [![Visual Studio Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![Version](https://img.shields.io/badge/version-0.0.3-green)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-**Quickly copy the contents of all files in a folder to your clipboard with a single right-click.**
+**Copy the entire contents of a folder to your clipboard in one click – ideal for feeding LLMs when you have plenty of tokens available.**
 
-This VS Code extension allows you to copy the combined contents of all files within a selected folder directly to your clipboard. Perfect for developers who need to share code snippets, review file contents, or quickly access multiple files' content without opening each one individually.
+This VS Code extension allows you to copy the combined contents of all files within a selected folder directly to your clipboard. Perfect for developers who need to share code snippets, review file contents, or quickly access multiple files' content without opening each one individually. Easy to share code with language models (ChatGPT, Claude, Copilot, etc.). No more opening files one by one – you instantly provide the context needed for analysis, refactoring, or code generation by the AI.
 
 ## Features
 
@@ -30,7 +30,7 @@ code --install-extension edwinalkins.copy-contents
 ### Copy All Folder Contents
 1. Right-click on any folder in the Explorer
 2. Select **"Copy Folder Contents"** from the context menu
-3. All file contents are now in your clipboard, ready to paste
+3. All file contents are now in your clipboard, ready to paste into an LLM chat.
 
 ### Copy with Selection
 1. Right-click on any folder in the Explorer
@@ -47,8 +47,8 @@ Customize the extension behavior through VS Code settings (`Ctrl+,` or `Cmd+,`):
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `copyContents.extensions` | `array` | `[".ts", ".js", ".json", ".md", ".py", ".yaml"]` | File extensions to include when copying |
-| `copyContents.excludedFolders` | `array` | `[".git", ".vscode", ".DS_Store", ".idea", ".pytest_cache", ".venv", "venv", "node_modules", "__MACOSX", "Thumbs.db"]` | Folders to exclude from copying |
+| `copyContents.extensions` | `array` | `[".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".py", ".yaml", ".rs", ".toml"]` | File extensions to include when copying |
+| `copyContents.excludedFolders` | `array` | `[".git", ".vscode", ".DS_Store", ".idea", ".pytest_cache", ".venv", "venv", "node_modules", "__MACOSX", "Thumbs.db", "dist", "build", "target", "__pycache__", ".pytest_cache"]` | Folders to exclude from copying |
 | `copyContents.maxFiles` | `number` | `100` | Maximum number of files to copy |
 | `copyContents.maxFileSize` | `number` | `1048576` (1MB) | Maximum file size in bytes to copy |
 | `copyContents.copyWithoutHeaders` | `boolean` | `false` | Copy file contents without file name headers |
@@ -78,6 +78,15 @@ By default, files are copied with headers showing the file path:
 ```
 
 When `copyContents.copyWithoutHeaders` is set to `true`, only the raw content is copied without file name headers.
+
+## Perfect for LLMs (when you have enough tokens)
+
+- Full context at once – Hand an entire module or project to the LLM in a single message, enabling deep analysis.
+- Token control – File selection, size limits, and extension filtering help you stay within any token ceiling.
+- Huge time saver – No more tedious copy‑pasting; you get a ready‑to‑use prompt in seconds.
+- Clear structure – Headers make it easy for the LLM to understand the project layout.
+
+Whether you need AI‑powered refactoring, debugging, documentation generation, or just want to ask a question about a codebase, Copy Folder Contents prepares the perfect context.
 
 ## Requirements
 

@@ -1,9 +1,9 @@
 {
   "name": "copy-contents",
   "icon": "icon.png",
-  "displayName": "copy-contents",
+  "displayName": "Copy Contents",
   "description": "Copy all files to clipboard",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "edwinalkins",
   "repository": {
     "type": "git",
@@ -58,11 +58,15 @@
           "type": "array",
           "default": [
             ".ts",
+            ".tsx",
             ".js",
+            ".jsx",
             ".json",
             ".md",
             ".py",
-            ".yaml"
+            ".yaml",
+            ".rs",
+            ".toml"
           ],
           "items": {
             "type": "string"
@@ -81,7 +85,12 @@
             "venv",
             "node_modules",
             "__MACOSX",
-            "Thumbs.db"
+            "Thumbs.db",
+            "dist",
+            "build",
+            "target",
+            "__pycache__",
+            ".pytest_cache"
           ],
           "items": {
             "type": "string"
@@ -102,6 +111,11 @@
           "type": "boolean",
           "default": false,
           "description": "Copy file contents without file name headers"
+        },
+        "copyContents.headerFormat": {
+          "type": "string",
+          "default": "--- File: {path} ---",
+          "description": "Template for the header placed before each file. Use {path} as a placeholder for the file path (e.g. \"# {path}\" or \"=== {path} ===\")"
         }
       }
     }
