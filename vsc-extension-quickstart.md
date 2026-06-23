@@ -1,4 +1,6 @@
 # Welcome to your VS Code Extension
+vsce package --allow-missing-repository 
+cursor --install-extension copy-contents-0.0.4.vsix
 
 ## What's in the folder
 

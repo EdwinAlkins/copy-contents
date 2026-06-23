@@ -5,85 +5,135 @@ import { getConfig, CopyContentsConfig, DEFAULT_HEADER_FORMAT } from './config';
 import { MESSAGES } from './messages';
 
 export function activate(context: vscode.ExtensionContext) {
-	const disposable = vscode.commands.registerCommand('copy-contents.copy', async (uri: vscode.Uri | undefined) => {
-		await executeCopy(uri);
+	const disposable = vscode.commands.registerCommand('copy-contents.copy', async (uri: vscode.Uri | undefined, uris?: vscode.Uri[]) => {
+		await executeCopy(uri, uris);
 	});
 
-	const disposableSelection = vscode.commands.registerCommand('copy-contents.copyWithSelection', async (uri: vscode.Uri | undefined) => {
-		await executeCopyWithSelection(uri);
+	const disposableSelection = vscode.commands.registerCommand('copy-contents.copyWithSelection', async (uri: vscode.Uri | undefined, uris?: vscode.Uri[]) => {
+		await executeCopyWithSelection(uri, uris);
 	});
 
 	context.subscriptions.push(disposable, disposableSelection);
 }
 
-async function executeCopy(uri: vscode.Uri | undefined) {
-	const validation = await validateFolderPath(uri);
-	if (!validation) {return;}
+async function executeCopy(uri: vscode.Uri | undefined, uris?: vscode.Uri[]) {
+	const targets = resolveSelection(uri, uris);
+	if (targets.length === 0) {
+		vscode.window.showErrorMessage(MESSAGES.ERROR.NO_FOLDER_SELECTED);
+		return;
+	}
 
-	const { folderPath, uriObject } = validation;
-	const rootPath = getRootPath(uriObject, folderPath);
 	const config = getConfig();
-	const filesToCopy = await getAllFiles(folderPath, config);
-	await copyFilesContent(filesToCopy, rootPath, config);
-}
+	const { files, rootPath } = await gatherSelection(targets, config);
 
-async function executeCopyWithSelection(uri: vscode.Uri | undefined) {
-	const validation = await validateFolderPath(uri);
-	if (!validation) {return;}
-
-	const { folderPath, uriObject } = validation;
-	const rootPath = getRootPath(uriObject, folderPath);
-	const config = getConfig();
-	const allFiles = await getAllFiles(folderPath, config);
-
-	if (allFiles.length === 0) {
+	if (files.length === 0) {
 		vscode.window.showInformationMessage(MESSAGES.ERROR.NO_FILES_FOUND);
 		return;
 	}
 
-	const byDir = groupFilesByDirectory(allFiles, rootPath);
-	const items = buildQuickPickItems(byDir);
+	await copyFilesContent(files, rootPath, config);
+}
 
-	const selected = await vscode.window.showQuickPick(items, {
-		canPickMany: true,
-		placeHolder: 'Select files to copy to clipboard',
-		title: 'Copy Folder Contents',
-	});
+async function executeCopyWithSelection(uri: vscode.Uri | undefined, uris?: vscode.Uri[]) {
+	const targets = resolveSelection(uri, uris);
+	if (targets.length === 0) {
+		vscode.window.showErrorMessage(MESSAGES.ERROR.NO_FOLDER_SELECTED);
+		return;
+	}
 
-	if (!selected || selected.length === 0) {return;}
+	const config = getConfig();
+	const { files, rootPath } = await gatherSelection(targets, config);
 
-	const selectedPaths = selected
-		.map(item => (item as { absolutePath?: string }).absolutePath)
-		.filter((p): p is string => p !== undefined);
+	if (files.length === 0) {
+		vscode.window.showInformationMessage(MESSAGES.ERROR.NO_FILES_FOUND);
+		return;
+	}
+
+	const byDir = groupFilesByDirectory(files, rootPath);
+	const selectedPaths = await pickFilesWithDirectoryToggle(byDir);
+
+	if (!selectedPaths || selectedPaths.length === 0) {return;}
 
 	await copyFilesContent(selectedPaths, rootPath, config);
 }
 
-async function validateFolderPath(uri: vscode.Uri | undefined): Promise<{ folderPath: string; uriObject: vscode.Uri } | null> {
-	if (!uri) {
-		vscode.window.showErrorMessage(MESSAGES.ERROR.NO_FOLDER_SELECTED);
-		return null;
-	}
-
-	const folderPath = uri.fsPath;
-	
-	try {
-		const stat = await fs.stat(folderPath);
-		if (!stat.isDirectory()) {
-			vscode.window.showErrorMessage(MESSAGES.ERROR.NOT_A_DIRECTORY);
-			return null;
-		}
-	} catch {
-		vscode.window.showErrorMessage(MESSAGES.ERROR.FOLDER_DOES_NOT_EXIST);
-		return null;
-	}
-
-	return { folderPath, uriObject: uri };
+/**
+ * Resolve the Explorer selection. VS Code passes the right-clicked resource as the
+ * first argument and the full multi-selection as the second; fall back to a single
+ * item (or nothing) when no multi-selection is available.
+ */
+function resolveSelection(uri: vscode.Uri | undefined, uris?: vscode.Uri[]): vscode.Uri[] {
+	if (uris && uris.length > 0) {return uris;}
+	if (uri) {return [uri];}
+	return [];
 }
 
-function getRootPath(uri: vscode.Uri, folderPath: string): string {
-	const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-	return workspaceFolder ? workspaceFolder.uri.fsPath : folderPath;
+/**
+ * Walk the selected resources into a flat list of files: selected folders are
+ * traversed recursively (respecting the extension/exclude/maxFiles config), while
+ * explicitly selected files are always included regardless of the extension filter.
+ * Also computes a shared root used to build relative paths for grouping and headers.
+ */
+async function gatherSelection(
+	targets: vscode.Uri[],
+	config: CopyContentsConfig,
+): Promise<{ files: string[]; rootPath: string }> {
+	const files: string[] = [];
+	const seen = new Set<string>();
+	const baseDirs: string[] = [];
+
+	for (const target of targets) {
+		const targetPath = target.fsPath;
+
+		let stat;
+		try {
+			stat = await fs.stat(targetPath);
+		} catch {
+			continue; // skip resources that no longer exist
+		}
+
+		if (stat.isDirectory()) {
+			baseDirs.push(targetPath);
+			if (files.length < config.maxFiles) {
+				const subFiles = await getAllFiles(targetPath, {
+					...config,
+					maxFiles: config.maxFiles - files.length,
+				});
+				for (const file of subFiles) {
+					if (!seen.has(file)) {
+						seen.add(file);
+						files.push(file);
+					}
+				}
+			}
+		} else {
+			baseDirs.push(path.dirname(targetPath));
+			if (files.length < config.maxFiles && !seen.has(targetPath)) {
+				seen.add(targetPath);
+				files.push(targetPath);
+			}
+		}
+	}
+
+	return { files, rootPath: commonParentDir(baseDirs) };
+}
+
+/**
+ * Longest directory path shared by every entry, used as the base for relative paths.
+ */
+function commonParentDir(dirs: string[]): string {
+	if (dirs.length === 0) {return '';}
+
+	let common = dirs[0].split(path.sep);
+	for (const dir of dirs.slice(1)) {
+		const segments = dir.split(path.sep);
+		let i = 0;
+		while (i < common.length && i < segments.length && common[i] === segments[i]) {i++;}
+		common = common.slice(0, i);
+	}
+
+	const joined = common.join(path.sep);
+	return joined === '' ? path.sep : joined;
 }
 
 async function copyFilesContent(filePaths: string[], rootPath: string, config: CopyContentsConfig) {
@@ -175,8 +225,19 @@ function allowedExtensionsMatch(fileExt: string, allowedExt: string[], originalA
 	return allowedExt.includes(fileExt);
 }
 
-function groupFilesByDirectory(filePaths: string[], rootPath: string): Map<string, { label: string; description: string; picked: true; absolutePath: string }[]> {
-	const byDir = new Map<string, { label: string; description: string; picked: true; absolutePath: string }[]>();
+interface FileEntry {
+	label: string;
+	description: string;
+	absolutePath: string;
+}
+
+interface FileQuickPickItem extends vscode.QuickPickItem {
+	absolutePath?: string;
+	isDirHeader?: boolean;
+}
+
+function groupFilesByDirectory(filePaths: string[], rootPath: string): Map<string, FileEntry[]> {
+	const byDir = new Map<string, FileEntry[]>();
 
 	for (const filePath of filePaths) {
 		const rel = path.relative(rootPath, filePath).replace(/\\/g, '/');
@@ -184,24 +245,106 @@ function groupFilesByDirectory(filePaths: string[], rootPath: string): Map<strin
 		if (!byDir.has(dir)) {
 			byDir.set(dir, []);
 		}
-		byDir.get(dir)!.push({ 
-			label: path.basename(filePath), 
-			description: rel, 
-			picked: true, 
-			absolutePath: filePath 
+		byDir.get(dir)!.push({
+			label: path.basename(filePath),
+			description: rel,
+			absolutePath: filePath,
 		});
 	}
 
 	return byDir;
 }
 
-function buildQuickPickItems(byDir: Map<string, { label: string; description: string; picked: true; absolutePath: string }[]>): vscode.QuickPickItem[] {
-	const items: vscode.QuickPickItem[] = [];
-	for (const [dir, files] of [...byDir.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-		items.push({ label: dir, kind: vscode.QuickPickItemKind.Separator });
-		items.push(...files);
-	}
-	return items;
+/**
+ * Show a multi-select QuickPick where each directory is a selectable header.
+ * Toggling a directory header selects/deselects all of its files in one click,
+ * and the header state stays in sync when individual files are toggled.
+ * Resolves with the chosen file paths, or `undefined` if the picker was dismissed.
+ */
+function pickFilesWithDirectoryToggle(byDir: Map<string, FileEntry[]>): Promise<string[] | undefined> {
+	return new Promise((resolve) => {
+		const qp = vscode.window.createQuickPick<FileQuickPickItem>();
+		qp.canSelectMany = true;
+		qp.title = 'Copy Folder Contents';
+		qp.placeholder = 'Toggle a folder to select/deselect all its files, then press Enter';
+
+		const items: FileQuickPickItem[] = [];
+		const dirToFiles = new Map<FileQuickPickItem, FileQuickPickItem[]>();
+
+		for (const [dir, files] of [...byDir.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+			const header: FileQuickPickItem = {
+				label: `$(folder) ${dir}`,
+				description: `— ${files.length} file${files.length > 1 ? 's' : ''}`,
+				isDirHeader: true,
+			};
+			const fileItems: FileQuickPickItem[] = files.map((f, index) => ({
+				label: `${index === files.length - 1 ? '  └ ' : '  ├ '}$(file) ${f.label}`,
+				description: f.description,
+				absolutePath: f.absolutePath,
+			}));
+			items.push({ label: '', kind: vscode.QuickPickItemKind.Separator }, header, ...fileItems);
+			dirToFiles.set(header, fileItems);
+		}
+
+		const selectableItems = items.filter(item => item.kind !== vscode.QuickPickItemKind.Separator);
+		qp.items = items;
+		qp.selectedItems = selectableItems; // everything picked by default
+
+		let prevSelected = new Set<FileQuickPickItem>(selectableItems);
+		let reconciling = false;
+
+		qp.onDidChangeSelection((selected) => {
+			if (reconciling) {return;}
+
+			const selectedSet = new Set(selected);
+			const next = new Set(selected);
+
+			// A directory header was toggled: apply its new state to all its files.
+			for (const [header, files] of dirToFiles) {
+				const wasSelected = prevSelected.has(header);
+				const nowSelected = selectedSet.has(header);
+				if (wasSelected !== nowSelected) {
+					for (const file of files) {
+						if (nowSelected) {next.add(file);} else {next.delete(file);}
+					}
+				}
+			}
+
+			// Keep each header in sync: checked only when all its files are checked.
+			for (const [header, files] of dirToFiles) {
+				const allSelected = files.length > 0 && files.every(file => next.has(file));
+				if (allSelected) {next.add(header);} else {next.delete(header);}
+			}
+
+			prevSelected = next;
+
+			const nextItems = items.filter(item => next.has(item));
+			const changed = nextItems.length !== selected.length || nextItems.some(item => !selectedSet.has(item));
+			if (changed) {
+				reconciling = true;
+				qp.selectedItems = nextItems;
+				reconciling = false;
+			}
+		});
+
+		let accepted = false;
+
+		qp.onDidAccept(() => {
+			accepted = true;
+			const paths = qp.selectedItems
+				.map(item => item.absolutePath)
+				.filter((p): p is string => p !== undefined);
+			qp.hide();
+			resolve(paths);
+		});
+
+		qp.onDidHide(() => {
+			if (!accepted) {resolve(undefined);}
+			qp.dispose();
+		});
+
+		qp.show();
+	});
 }
 
 export function deactivate() {}
