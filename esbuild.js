@@ -1,4 +1,5 @@
 const esbuild = require("esbuild");
+const fs = require("fs");
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
@@ -44,7 +45,6 @@ async function main() {
 				name: 'copy-icon',
 				setup(build) {
 					build.onEnd(() => {
-						const fs = require('fs');
 						fs.copyFileSync('icon.png', 'dist/icon.png');
 					});
 				}

@@ -137,45 +137,60 @@ function commonParentDir(dirs: string[]): string {
 }
 
 async function copyFilesContent(filePaths: string[], rootPath: string, config: CopyContentsConfig) {
-	const contents = await Promise.all(
-		filePaths.map(async (filePath) => {
-			try {
-				const stat = await fs.stat(filePath);
-				if (stat.size > config.maxFileSize) {
-					console.warn(MESSAGES.ERROR.FILE_TOO_LARGE(filePath, stat.size, config.maxFileSize));
-					vscode.window.showWarningMessage(MESSAGES.ERROR.FILE_TOO_LARGE(path.basename(filePath), stat.size, config.maxFileSize));
-					return null;
-				}
-				
-				const relativePath = path.relative(rootPath, filePath).replace(/\\/g, '/');
-				const fileContent = await fs.readFile(filePath, 'utf8');
-				
-				if (config.copyWithoutHeaders) {
-					return fileContent;
-				}
-				let headerFormat: string = config.headerFormat;
-				if (!headerFormat.includes('{path}')) {
-					console.warn(MESSAGES.ERROR.HEADER_FORMAT_MISSING(filePath));
-					headerFormat = DEFAULT_HEADER_FORMAT;
-				}
-				const header = headerFormat.replace(/\{path\}/g, relativePath);
-				return `\n\n${header}\n\n${fileContent}`;
-			} catch (error) {
-				console.error(MESSAGES.ERROR.FILE_READ_ERROR(filePath), error);
-				vscode.window.showWarningMessage(MESSAGES.ERROR.FILE_READ_ERROR(filePath));
-				return null;
+	// Validate the header format once, not once per file: an invalid format is a
+	// configuration problem, so warn a single time and fall back to the default.
+	let headerFormat = config.headerFormat;
+	if (!config.copyWithoutHeaders && !headerFormat.includes('{path}')) {
+		console.warn(MESSAGES.ERROR.HEADER_FORMAT_MISSING(headerFormat));
+		headerFormat = DEFAULT_HEADER_FORMAT;
+	}
+
+	const parts: string[] = [];
+	const skippedTooLarge: string[] = [];
+	const failedToRead: string[] = [];
+
+	// Read sequentially rather than via Promise.all: a large selection of large
+	// files would otherwise be held in memory all at once, risking an Extension
+	// Host crash. Sequential reads keep the peak memory footprint to one file.
+	for (const filePath of filePaths) {
+		try {
+			const stat = await fs.stat(filePath);
+			if (stat.size > config.maxFileSize) {
+				console.warn(MESSAGES.ERROR.FILE_TOO_LARGE(filePath, stat.size, config.maxFileSize));
+				skippedTooLarge.push(path.basename(filePath));
+				continue;
 			}
-		})
-	);
 
-	const validContents = contents.filter((content): content is string => content !== null);
-	const finalText = validContents.join('');
+			const fileContent = await fs.readFile(filePath, 'utf8');
 
-	if (validContents.length === 0) {return;}
+			if (config.copyWithoutHeaders) {
+				parts.push(fileContent);
+				continue;
+			}
+
+			const relativePath = path.relative(rootPath, filePath).replace(/\\/g, '/');
+			const header = headerFormat.replace(/\{path\}/g, relativePath);
+			parts.push(`\n\n${header}\n\n${fileContent}`);
+		} catch (error) {
+			console.error(MESSAGES.ERROR.FILE_READ_ERROR(filePath), error);
+			failedToRead.push(path.basename(filePath));
+		}
+	}
+
+	// Surface skipped/failed files as a single aggregated warning instead of one
+	// popup per file, which would queue dozens of notifications.
+	if (skippedTooLarge.length > 0) {
+		vscode.window.showWarningMessage(MESSAGES.WARNING.FILES_SKIPPED_TOO_LARGE(skippedTooLarge.length));
+	}
+	if (failedToRead.length > 0) {
+		vscode.window.showWarningMessage(MESSAGES.WARNING.FILES_READ_FAILED(failedToRead.length));
+	}
+
+	if (parts.length === 0) {return;}
 
 	try {
-		await vscode.env.clipboard.writeText(finalText);
-		vscode.window.showInformationMessage(MESSAGES.SUCCESS.FILES_COPY(validContents.length));
+		await vscode.env.clipboard.writeText(parts.join(''));
+		vscode.window.showInformationMessage(MESSAGES.SUCCESS.FILES_COPY(parts.length));
 	} catch (error) {
 		console.error(MESSAGES.ERROR.CLIPBOARD_WRITE_FAILED, error);
 		vscode.window.showErrorMessage(MESSAGES.ERROR.CLIPBOARD_WRITE_FAILED);
@@ -185,28 +200,32 @@ async function copyFilesContent(filePaths: string[], rootPath: string, config: C
 async function getAllFiles(folderPath: string, config: CopyContentsConfig): Promise<string[]> {
 	let results: string[] = [];
 
-	try {
-		const list = await fs.readdir(folderPath);
+	// config.extensions is already lowercased by getConfig(); build a Set once so the
+	// per-file extension check is O(1) instead of re-mapping the list for every entry.
+	const allowedExt = new Set(config.extensions);
 
-		for (const item of list) {
+	try {
+		// withFileTypes returns Dirent objects, so we can branch on isDirectory()/isFile()
+		// without an extra fs.stat() round-trip per entry.
+		const entries = await fs.readdir(folderPath, { withFileTypes: true });
+
+		for (const entry of entries) {
 			if (results.length >= config.maxFiles) {break;}
 
-			const fullPath = path.join(folderPath, item);
-			const stat = await fs.stat(fullPath);
+			const fullPath = path.join(folderPath, entry.name);
 
-			if (stat.isDirectory()) {
-				if (!config.excludedFolders.includes(item)) {
+			if (entry.isDirectory()) {
+				if (!config.excludedFolders.includes(entry.name)) {
 					const subFiles = await getAllFiles(fullPath, {
 						...config,
 						maxFiles: config.maxFiles - results.length,
 					});
 					results = results.concat(subFiles);
 				}
-			} else {
-				const ext = path.extname(item).toLowerCase();
-				const allowedExt = config.extensions.map(e => e.toLowerCase());
-				
-				if (allowedExtensionsMatch(ext, allowedExt, config.extensions) && results.length < config.maxFiles) {
+			} else if (entry.isFile()) {
+				const ext = path.extname(entry.name).toLowerCase();
+				// An empty extensions list means "allow all files".
+				if (allowedExt.size === 0 || allowedExt.has(ext)) {
 					results.push(fullPath);
 				}
 			}
@@ -216,13 +235,6 @@ async function getAllFiles(folderPath: string, config: CopyContentsConfig): Prom
 	}
 
 	return results;
-}
-
-function allowedExtensionsMatch(fileExt: string, allowedExt: string[], originalAllowed: string[]): boolean {
-	// If no extensions configured, allow all
-	if (originalAllowed.length === 0) {return true;}
-	// Check against lowercase versions
-	return allowedExt.includes(fileExt);
 }
 
 interface FileEntry {

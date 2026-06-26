@@ -4,6 +4,25 @@ All notable changes to the "copy-contents" extension will be documented in this 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.6] - 2026-06-26
+
+### Changed
+
+- **Faster folder traversal**: directory walking now reads entries with `withFileTypes`, removing one `fs.stat` call per item, and matches extensions against a pre-built lowercase set instead of re-lowercasing the list for every file.
+- **Lower memory usage on large selections**: file contents are now read sequentially instead of all at once, keeping the peak memory footprint small when copying many or large files.
+- **Cleaner notifications**: skipped files (too large) and unreadable files are now reported as a single aggregated warning each, instead of one popup per file.
+
+### Fixed
+
+- Removed a duplicate `.pytest_cache` entry in the default `excludedFolders` list.
+- The header format is now validated once instead of once per file, so a misconfigured `headerFormat` no longer spams the console while still falling back to the default.
+- `tsconfig.json`: added `moduleResolution: "Node16"` to match `module: "Node16"`.
+
+### Documentation
+
+- Updated the README configuration table to reflect the actual default extensions and to document the `copyContents.headerFormat` setting.
+- Fixed the README "Output Format" example to match the default header (`--- File: {path} ---`).
+
 ## [0.0.5] - 2026-06-23
 
 ### Added

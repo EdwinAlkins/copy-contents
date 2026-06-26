@@ -12,6 +12,12 @@ export const MESSAGES = {
         DIRECTORY_READ_ERROR: (dirPath: string) => `Failed to read directory: ${dirPath}`,
         HEADER_FORMAT_MISSING: (filePath: string) => `Header format missing for file: ${filePath}`,
     },
+    WARNING: {
+        FILES_SKIPPED_TOO_LARGE: (count: number) =>
+            `${count} file(s) were skipped (exceeded max file size).`,
+        FILES_READ_FAILED: (count: number) =>
+            `${count} file(s) could not be read and were skipped.`,
+    },
     SUCCESS: {
         FILES_COPY: (count: number) => `${count} file(s) copied to clipboard.`,
     },

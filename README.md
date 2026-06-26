@@ -1,10 +1,10 @@
 # Copy Contents
 
-[![Visual Studio Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![Version](https://img.shields.io/badge/version-0.0.3-green)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![Visual Studio Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![Version](https://img.shields.io/badge/version-0.0.6-green)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 **Copy the entire contents of a folder to your clipboard in one click – ideal for feeding LLMs when you have plenty of tokens available.**
 
-This VS Code extension allows you to copy the combined contents of all files within a selected folder directly to your clipboard. Perfect for developers who need to share code snippets, review file contents, or quickly access multiple files' content without opening each one individually. Easy to share code with language models (ChatGPT, Claude, Copilot, etc.). No more opening files one by one – you instantly provide the context needed for analysis, refactoring, or code generation by the AI.
+This VS Code extension allows you to copy the combined contents of all files within a selected folder directly to your clipboard. Perfect for developers who need to share code snippets, to review file contents, or to quickly access multiple files' content without opening each one individually. It becomes easy to share code with language models (ChatGPT, Claude, Copilot, etc.). No more opening files one by one – you instantly provide the context needed for analysis, refactoring, or code generation by the AI.
 
 ## Features
 
@@ -27,15 +27,16 @@ code --install-extension edwinalkins.copy-contents
 
 ## Usage
 
-### Copy All Folder Contents
-1. Right-click on any folder in the Explorer
-2. Select **"Copy Folder Contents"** from the context menu
-3. All file contents are now in your clipboard, ready to paste into an LLM chat.
+### Copy Folder Contents
+1. In the Explorer, select one or more files and/or folders (use `Ctrl`/`Cmd` or `Shift` for multi-selection)
+2. Right-click and choose **"Copy Folder Contents"** from the context menu
+3. Selected folders are traversed recursively (filtered by extension); explicitly selected files are always included regardless of the filter
+4. All file contents are now in your clipboard, ready to paste into an LLM chat
 
 ### Copy with Selection
-1. Right-click on any folder in the Explorer
+1. In the Explorer, select one or more files and/or folders, then right-click
 2. Select **"Copy with Selection"** from the context menu
-3. A selection dialog will appear - choose which files to include
+3. A selection dialog appears — pick which files to include. Each folder shows up as a header you can toggle to check/uncheck all of its files at once
 4. Selected file contents are copied to your clipboard
 
 ### Keyboard Shortcut
@@ -47,11 +48,12 @@ Customize the extension behavior through VS Code settings (`Ctrl+,` or `Cmd+,`):
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `copyContents.extensions` | `array` | `[".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".py", ".yaml", ".rs", ".toml"]` | File extensions to include when copying |
-| `copyContents.excludedFolders` | `array` | `[".git", ".vscode", ".DS_Store", ".idea", ".pytest_cache", ".venv", "venv", "node_modules", "__MACOSX", "Thumbs.db", "dist", "build", "target", "__pycache__", ".pytest_cache"]` | Folders to exclude from copying |
+| `copyContents.extensions` | `array` | `[".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".py", ".yaml", ".rs", ".toml", ".go", ".php", ".yml"]` | File extensions to include when copying. An empty list copies every file. |
+| `copyContents.excludedFolders` | `array` | `[".git", ".vscode", ".DS_Store", ".idea", ".pytest_cache", ".venv", "venv", "node_modules", "__MACOSX", "Thumbs.db", "dist", "build", "target", "__pycache__"]` | Folders to exclude from copying |
 | `copyContents.maxFiles` | `number` | `100` | Maximum number of files to copy |
 | `copyContents.maxFileSize` | `number` | `1048576` (1MB) | Maximum file size in bytes to copy |
 | `copyContents.copyWithoutHeaders` | `boolean` | `false` | Copy file contents without file name headers |
+| `copyContents.headerFormat` | `string` | `"--- File: {path} ---"` | Template for the header placed before each file. Use `{path}` as a placeholder for the file path (e.g. `"# {path}"` or `"=== {path} ==="`). If `{path}` is missing, the default format is used. |
 
 ### Example Configuration
 
@@ -61,7 +63,8 @@ Customize the extension behavior through VS Code settings (`Ctrl+,` or `Cmd+,`):
   "copyContents.excludedFolders": [".git", "node_modules", "dist"],
   "copyContents.maxFiles": 50,
   "copyContents.maxFileSize": 524288,
-  "copyContents.copyWithoutHeaders": true
+  "copyContents.copyWithoutHeaders": false,
+  "copyContents.headerFormat": "# {path}"
 }
 ```
 
@@ -70,14 +73,14 @@ Customize the extension behavior through VS Code settings (`Ctrl+,` or `Cmd+,`):
 By default, files are copied with headers showing the file path:
 
 ```
-=== file: src/index.ts ===
+--- File: src/index.ts ---
 // file content here
 
-=== file: src/utils/helper.js ===
+--- File: src/utils/helper.js ---
 // file content here
 ```
 
-When `copyContents.copyWithoutHeaders` is set to `true`, only the raw content is copied without file name headers.
+You can customize the header via `copyContents.headerFormat` (use `{path}` as the file-path placeholder), or set `copyContents.copyWithoutHeaders` to `true` to copy only the raw content without any headers.
 
 ## Perfect for LLMs (when you have enough tokens)
 
@@ -86,7 +89,7 @@ When `copyContents.copyWithoutHeaders` is set to `true`, only the raw content is
 - Huge time saver – No more tedious copy‑pasting; you get a ready‑to‑use prompt in seconds.
 - Clear structure – Headers make it easy for the LLM to understand the project layout.
 
-Whether you need AI‑powered refactoring, debugging, documentation generation, or just want to ask a question about a codebase, Copy Folder Contents prepares the perfect context.
+Whether you need AI‑powered refactoring, debugging, documentation generation, or youjust want to ask a question about a codebase, Copy Folder Contents prepares the perfect context.
 
 ## Requirements
 
@@ -100,17 +103,28 @@ Whether you need AI‑powered refactoring, debugging, documentation generation, 
 
 ## Release Notes
 
-### 0.0.3
-- Initial release with core functionality
-- Added selective copy feature
-- Enhanced configuration options
-- Improved file filtering
+### 0.0.6
+- Faster folder traversal (`withFileTypes`, no per-file `stat`; extensions matched via a prebuilt set)
+- Lower memory usage on large selections: files are read sequentially instead of all at once
+- Skipped/unreadable files are now reported as a single aggregated warning instead of one popup per file
+- `headerFormat` is validated once instead of per file (no more console spam on a bad format)
+- Removed a duplicate `.pytest_cache` default, added `moduleResolution: "Node16"` to `tsconfig.json`
+- Docs: updated default extensions, documented `copyContents.headerFormat`, fixed the output-format example
+
+### 0.0.5
+- Explore multi-selection support: both commands operate on the entire selection (files and/or folders); selected folders are traversed recursively while explicitly selected files are always included
+- One-click folder toggle in "Copy with Selection": each directory header checks/unchecks all of its files at once
+- Improved visual hierarchy in the selection picker: directory separators, folder/file icons and tree-style indentation
+- Context menu entries now appear on files as well as folders
+
+### 0.0.4
+- Initial public release with core functionality, selective copy, configurable extensions, excluded folders and size limits
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues or pull requests on [GitHub](https://github.com/edwinalkins/copy-contents).
+Contributions and feedbacks are welcome! Please feel free to submit issues or pull requests on [GitHub](https://github.com/edwinalkins/copy-contents).
 
 ## License
 

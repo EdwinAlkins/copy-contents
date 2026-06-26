@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 const DEFAULT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.py', '.yaml', '.rs', '.toml'];
-const DEFAULT_EXCLUDED_FOLDERS = ['node_modules', '.git', '.vscode', '.DS_Store', '.idea', '.pytest_cache', '.venv', 'venv', '__MACOSX', 'Thumbs.db', 'dist', 'build', 'target', '__pycache__', '.pytest_cache'];
+const DEFAULT_EXCLUDED_FOLDERS = ['node_modules', '.git', '.vscode', '.DS_Store', '.idea', '.pytest_cache', '.venv', 'venv', '__MACOSX', 'Thumbs.db', 'dist', 'build', 'target', '__pycache__'];
 const DEFAULT_MAX_FILES = 100;
 const DEFAULT_MAX_FILE_SIZE = 1024 * 1024; // 1MB
 const DEFAULT_COPY_WITHOUT_HEADERS = false;
@@ -19,7 +19,9 @@ export interface CopyContentsConfig {
 export function getConfig(): CopyContentsConfig {
     const config = vscode.workspace.getConfiguration('copyContents');
     return {
-        extensions: config.get<string[]>('extensions', DEFAULT_EXTENSIONS),
+        // Normalize extensions to lowercase once so the file-matching hot path
+        // doesn't have to re-lowercase the list for every file it inspects.
+        extensions: config.get<string[]>('extensions', DEFAULT_EXTENSIONS).map(e => e.toLowerCase()),
         excludedFolders: config.get<string[]>('excludedFolders', DEFAULT_EXCLUDED_FOLDERS),
         maxFiles: config.get<number>('maxFiles', DEFAULT_MAX_FILES),
         maxFileSize: config.get<number>('maxFileSize', DEFAULT_MAX_FILE_SIZE),

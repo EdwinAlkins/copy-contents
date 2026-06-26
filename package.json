@@ -3,7 +3,7 @@
   "icon": "icon.png",
   "displayName": "Copy Contents",
   "description": "Copy all files to clipboard",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "edwinalkins",
   "repository": {
     "type": "git",
@@ -92,8 +92,7 @@
             "dist",
             "build",
             "target",
-            "__pycache__",
-            ".pytest_cache"
+            "__pycache__"
           ],
           "items": {
             "type": "string"
