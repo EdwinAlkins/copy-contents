@@ -3,7 +3,7 @@
   "icon": "icon.png",
   "displayName": "Copy Contents",
   "description": "Copy all files to clipboard",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "edwinalkins",
   "repository": {
     "type": "git",
@@ -30,6 +30,14 @@
       {
         "command": "copy-contents.copyWithSelection",
         "title": "Copy with Selection"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "copy-contents.copy",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c",
+        "when": "filesExplorerFocus && !inputFocus"
       }
     ],
     "menus": {

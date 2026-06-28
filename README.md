@@ -1,6 +1,6 @@
 # Copy Contents
 
-[![Visual Studio Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![Version](https://img.shields.io/badge/version-0.0.6-green)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![Visual Studio Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![Version](https://img.shields.io/badge/version-0.0.7-green)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 **Copy the entire contents of a folder to your clipboard in one click – ideal for feeding LLMs when you have plenty of tokens available.**
 
@@ -13,6 +13,9 @@ This VS Code extension allows you to copy the combined contents of all files wit
 - **Customizable** - Configure file extensions, excluded folders, and size limits
 - **Lightning Fast** - Process files efficiently without blocking your editor
 - **Smart Filtering** - Automatically excludes common folders like `.git`, `node_modules`, etc.
+
+![Copy Folder Contents](https://github.com/edwinalkins/copy-contents/blob/main/usage.gif?raw=true)
+
 
 ## Installation
 
@@ -40,7 +43,14 @@ code --install-extension edwinalkins.copy-contents
 4. Selected file contents are copied to your clipboard
 
 ### Keyboard Shortcut
-You can also add custom keyboard shortcuts for these commands in VS Code settings.
+With one or more files and/or folders selected in the Explorer, press:
+
+| Platform | Shortcut |
+|----------|----------|
+| Windows / Linux | `Ctrl+Alt+C` |
+| macOS | `Cmd+Alt+C` |
+
+This runs **Copy Folder Contents** on the current Explorer selection. The shortcut only applies while the Explorer has focus, so it never clashes with editor shortcuts. You can rebind it (or add one for **Copy with Selection**) from **Keyboard Shortcuts** (`Ctrl+K Ctrl+S` / `Cmd+K Cmd+S`), searching for "Copy Folder Contents".
 
 ## Configuration
 
@@ -103,22 +113,7 @@ Whether you need AI‑powered refactoring, debugging, documentation generation, 
 
 ## Release Notes
 
-### 0.0.6
-- Faster folder traversal (`withFileTypes`, no per-file `stat`; extensions matched via a prebuilt set)
-- Lower memory usage on large selections: files are read sequentially instead of all at once
-- Skipped/unreadable files are now reported as a single aggregated warning instead of one popup per file
-- `headerFormat` is validated once instead of per file (no more console spam on a bad format)
-- Removed a duplicate `.pytest_cache` default, added `moduleResolution: "Node16"` to `tsconfig.json`
-- Docs: updated default extensions, documented `copyContents.headerFormat`, fixed the output-format example
-
-### 0.0.5
-- Explore multi-selection support: both commands operate on the entire selection (files and/or folders); selected folders are traversed recursively while explicitly selected files are always included
-- One-click folder toggle in "Copy with Selection": each directory header checks/unchecks all of its files at once
-- Improved visual hierarchy in the selection picker: directory separators, folder/file icons and tree-style indentation
-- Context menu entries now appear on files as well as folders
-
-### 0.0.4
-- Initial public release with core functionality, selective copy, configurable extensions, excluded folders and size limits
+See the [CHANGELOG](CHANGELOG.md) for the full list of changes.
 
 ---
 

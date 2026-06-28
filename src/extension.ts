@@ -17,7 +17,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 async function executeCopy(uri: vscode.Uri | undefined, uris?: vscode.Uri[]) {
-	const targets = resolveSelection(uri, uris);
+	const targets = await resolveSelection(uri, uris);
 	if (targets.length === 0) {
 		vscode.window.showErrorMessage(MESSAGES.ERROR.NO_FOLDER_SELECTED);
 		return;
@@ -35,7 +35,7 @@ async function executeCopy(uri: vscode.Uri | undefined, uris?: vscode.Uri[]) {
 }
 
 async function executeCopyWithSelection(uri: vscode.Uri | undefined, uris?: vscode.Uri[]) {
-	const targets = resolveSelection(uri, uris);
+	const targets = await resolveSelection(uri, uris);
 	if (targets.length === 0) {
 		vscode.window.showErrorMessage(MESSAGES.ERROR.NO_FOLDER_SELECTED);
 		return;
@@ -58,14 +58,37 @@ async function executeCopyWithSelection(uri: vscode.Uri | undefined, uris?: vsco
 }
 
 /**
- * Resolve the Explorer selection. VS Code passes the right-clicked resource as the
- * first argument and the full multi-selection as the second; fall back to a single
- * item (or nothing) when no multi-selection is available.
+ * Resolve the Explorer selection. When invoked from the context menu, VS Code passes
+ * the right-clicked resource as the first argument and the full multi-selection as the
+ * second. When invoked via a keyboard shortcut, no arguments are passed, so we fall
+ * back to reading the current Explorer selection.
  */
-function resolveSelection(uri: vscode.Uri | undefined, uris?: vscode.Uri[]): vscode.Uri[] {
+async function resolveSelection(uri: vscode.Uri | undefined, uris?: vscode.Uri[]): Promise<vscode.Uri[]> {
 	if (uris && uris.length > 0) {return uris;}
 	if (uri) {return [uri];}
-	return [];
+	return getExplorerSelection();
+}
+
+/**
+ * Read the current Explorer selection when no resource is passed (keyboard shortcut).
+ * VS Code exposes no public API for this, so we use the built-in `copyFilePath`
+ * command — which copies the absolute path of every selected item, one per line — and
+ * restore the previous clipboard contents afterwards.
+ */
+async function getExplorerSelection(): Promise<vscode.Uri[]> {
+	const saved = await vscode.env.clipboard.readText();
+	try {
+		await vscode.commands.executeCommand('copyFilePath');
+		const copied = await vscode.env.clipboard.readText();
+		if (copied === saved) {return [];} // nothing selected: clipboard unchanged
+		return copied
+			.split(/\r?\n/)
+			.map(line => line.trim())
+			.filter(line => line.length > 0)
+			.map(line => vscode.Uri.file(line));
+	} finally {
+		await vscode.env.clipboard.writeText(saved);
+	}
 }
 
 /**

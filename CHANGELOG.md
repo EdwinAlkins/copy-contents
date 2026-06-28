@@ -4,6 +4,20 @@ All notable changes to the "copy-contents" extension will be documented in this 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.7] - 2026-06-28
+
+### Added
+
+- **Keyboard shortcut**: `Ctrl+Alt+C` (Windows/Linux) / `Cmd+Alt+C` (macOS) runs **Copy Folder Contents** on the current Explorer selection. The binding is scoped to `filesExplorerFocus && !inputFocus`, so it never clashes with editor shortcuts and stays inactive while renaming. It can be rebound from VS Code's Keyboard Shortcuts editor.
+
+### Changed
+
+- Both commands now resolve the Explorer selection from the live selection when invoked without arguments (e.g. via the keyboard shortcut), falling back to the built-in `copyFilePath` command and restoring the clipboard afterwards.
+
+### Documentation
+
+- Documented the new keyboard shortcut in the README and replaced the inline "Release Notes" section with a link to this changelog.
+
 ## [0.0.6] - 2026-06-26
 
 ### Changed
