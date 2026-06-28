@@ -12,3 +12,15 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+
+# Demo asset served via a remote URL in the README, not needed in the package
+usage.gif
+
+# Internal docs / config, not meant for the published extension
+PUBLISHING.md
+CLAUDE.md
+article.md
+.claude/**
+
+# Duplicate of the root icon.png produced by the esbuild copy step
+dist/icon.png
