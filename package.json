@@ -3,7 +3,7 @@
   "icon": "icon.png",
   "displayName": "Copy Contents",
   "description": "Copy all files to clipboard",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "edwinalkins",
   "repository": {
     "type": "git",
@@ -126,6 +126,11 @@
           "type": "string",
           "default": "--- File: {path} ---",
           "description": "Template for the header placed before each file. Use {path} as a placeholder for the file path (e.g. \"# {path}\" or \"=== {path} ===\")"
+        },
+        "copyContents.includeFileTree": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prepend a file tree of the copied files, with the line where each file starts in the copied text"
         }
       }
     }

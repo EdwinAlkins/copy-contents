@@ -4,6 +4,17 @@ All notable changes to the "copy-contents" extension will be documented in this 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.8] - 2026-09-28
+
+### Added
+
+- **File tree header**: the copied text now starts with a tree of every copied file, each annotated with the line where it starts in the copied text (e.g. `extension.ts  (line 9)`), making it easy to navigate large pastes. Files skipped because they are too large or unreadable are left out of the tree.
+- New `copyContents.includeFileTree` setting (default: `true`) to turn the file tree header off.
+
+### Documentation
+
+- Documented the file tree header and the `copyContents.includeFileTree` setting in the README.
+
 ## [0.0.7] - 2026-06-28
 
 ### Added

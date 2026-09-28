@@ -169,6 +169,7 @@ async function copyFilesContent(filePaths: string[], rootPath: string, config: C
 	}
 
 	const parts: string[] = [];
+	const copied: CopiedFile[] = [];
 	const skippedTooLarge: string[] = [];
 	const failedToRead: string[] = [];
 
@@ -185,14 +186,17 @@ async function copyFilesContent(filePaths: string[], rootPath: string, config: C
 			}
 
 			const fileContent = await fs.readFile(filePath, 'utf8');
+			const relativePath = path.relative(rootPath, filePath).replace(/\\/g, '/');
 
 			if (config.copyWithoutHeaders) {
+				copied.push({ relativePath, startOffset: 0 });
 				parts.push(fileContent);
 				continue;
 			}
 
-			const relativePath = path.relative(rootPath, filePath).replace(/\\/g, '/');
 			const header = headerFormat.replace(/\{path\}/g, relativePath);
+			// The header sits after the two leading newlines of the part.
+			copied.push({ relativePath, startOffset: 2 });
 			parts.push(`\n\n${header}\n\n${fileContent}`);
 		} catch (error) {
 			console.error(MESSAGES.ERROR.FILE_READ_ERROR(filePath), error);
@@ -211,13 +215,86 @@ async function copyFilesContent(filePaths: string[], rootPath: string, config: C
 
 	if (parts.length === 0) {return;}
 
+	const body = parts.join('');
+	const text = config.includeFileTree
+		? buildFileTree(copied, parts, path.basename(rootPath) || rootPath) + body
+		: body;
+
 	try {
-		await vscode.env.clipboard.writeText(parts.join(''));
+		await vscode.env.clipboard.writeText(text);
 		vscode.window.showInformationMessage(MESSAGES.SUCCESS.FILES_COPY(parts.length));
 	} catch (error) {
 		console.error(MESSAGES.ERROR.CLIPBOARD_WRITE_FAILED, error);
 		vscode.window.showErrorMessage(MESSAGES.ERROR.CLIPBOARD_WRITE_FAILED);
 	}
+}
+
+interface CopiedFile {
+	relativePath: string;
+	/** Number of newlines in the part before the line where this file starts. */
+	startOffset: number;
+}
+
+interface TreeNode {
+	children: Map<string, TreeNode>;
+	/** Line where the file starts in the copied text (files only). */
+	line?: number;
+}
+
+function countNewlines(text: string): number {
+	let count = 0;
+	for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) {count++;}
+	return count;
+}
+
+/**
+ * Build the file tree header placed at the top of the copied text. Each file is
+ * annotated with the line where it starts in the final text (header included).
+ * The tree always spans one line per node plus a title and a trailing blank line,
+ * so its height is known before the line numbers are written into it.
+ */
+function buildFileTree(copied: CopiedFile[], parts: string[], rootName: string): string {
+	const root: TreeNode = { children: new Map() };
+	for (const file of copied) {
+		let node = root;
+		for (const segment of file.relativePath.split('/')) {
+			let child = node.children.get(segment);
+			if (!child) {
+				child = { children: new Map() };
+				node.children.set(segment, child);
+			}
+			node = child;
+		}
+	}
+
+	const countNodes = (node: TreeNode): number =>
+		[...node.children.values()].reduce((sum, child) => sum + 1 + countNodes(child), 0);
+	// Title + root line + one line per node + blank separator line.
+	const treeHeight = 2 + countNodes(root) + 1;
+
+	// Line numbers are 1-based and computed on the final text (tree + body).
+	let newlinesBefore = treeHeight;
+	copied.forEach((file, index) => {
+		let node = root;
+		for (const segment of file.relativePath.split('/')) {node = node.children.get(segment)!;}
+		node.line = newlinesBefore + file.startOffset + 1;
+		newlinesBefore += countNewlines(parts[index]);
+	});
+
+	const lines = [`=== File tree (${copied.length} file${copied.length > 1 ? 's' : ''}) ===`, `${rootName}/`];
+	const render = (node: TreeNode, prefix: string) => {
+		const entries = [...node.children.entries()];
+		entries.forEach(([name, child], index) => {
+			const isLast = index === entries.length - 1;
+			const isFile = child.line !== undefined && child.children.size === 0;
+			const label = isFile ? `${name}  (line ${child.line})` : `${name}/`;
+			lines.push(`${prefix}${isLast ? '└── ' : '├── '}${label}`);
+			render(child, prefix + (isLast ? '    ' : '│   '));
+		});
+	};
+	render(root, '');
+
+	return lines.join('\n') + '\n\n';
 }
 
 async function getAllFiles(folderPath: string, config: CopyContentsConfig): Promise<string[]> {

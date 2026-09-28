@@ -1,6 +1,6 @@
 # Copy Contents
 
-[![Visual Studio Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![Version](https://img.shields.io/badge/version-0.0.7-green)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![Visual Studio Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![Version](https://img.shields.io/badge/version-0.0.8-green)](https://marketplace.visualstudio.com/items?itemName=edwinalkins.copy-contents) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 **Copy the entire contents of a folder to your clipboard in one click – ideal for feeding LLMs when you have plenty of tokens available.**
 
@@ -10,6 +10,7 @@ This VS Code extension allows you to copy the combined contents of all files wit
 
 - **Copy Folder Contents** - Copy all file contents from a folder with one click
 - **Selective Copy** - Choose which files to include with selection support
+- **File Tree Header** - The copied text starts with a tree of all copied files and the line where each one starts
 - **Customizable** - Configure file extensions, excluded folders, and size limits
 - **Lightning Fast** - Process files efficiently without blocking your editor
 - **Smart Filtering** - Automatically excludes common folders like `.git`, `node_modules`, etc.
@@ -64,6 +65,7 @@ Customize the extension behavior through VS Code settings (`Ctrl+,` or `Cmd+,`):
 | `copyContents.maxFileSize` | `number` | `1048576` (1MB) | Maximum file size in bytes to copy |
 | `copyContents.copyWithoutHeaders` | `boolean` | `false` | Copy file contents without file name headers |
 | `copyContents.headerFormat` | `string` | `"--- File: {path} ---"` | Template for the header placed before each file. Use `{path}` as a placeholder for the file path (e.g. `"# {path}"` or `"=== {path} ==="`). If `{path}` is missing, the default format is used. |
+| `copyContents.includeFileTree` | `boolean` | `true` | Prepend a file tree of the copied files, with the line where each file starts in the copied text |
 
 ### Example Configuration
 
@@ -74,21 +76,36 @@ Customize the extension behavior through VS Code settings (`Ctrl+,` or `Cmd+,`):
   "copyContents.maxFiles": 50,
   "copyContents.maxFileSize": 524288,
   "copyContents.copyWithoutHeaders": false,
-  "copyContents.headerFormat": "# {path}"
+  "copyContents.headerFormat": "# {path}",
+  "copyContents.includeFileTree": true
 }
 ```
 
 ## Output Format
 
-By default, files are copied with headers showing the file path:
+By default, the copied text starts with a file tree of every copied file, followed by each file with a header showing its path:
 
 ```
+=== File tree (2 files) ===
+my-project/
+└── src/
+    ├── index.ts  (line 10)
+    └── utils/
+        └── helper.js  (line 15)
+
+
+
 --- File: src/index.ts ---
+
 // file content here
+
 
 --- File: src/utils/helper.js ---
+
 // file content here
 ```
+
+Each file in the tree shows the line where it starts in the copied text, so you (or an LLM) can jump straight to it. Set `copyContents.includeFileTree` to `false` to leave the tree out.
 
 You can customize the header via `copyContents.headerFormat` (use `{path}` as the file-path placeholder), or set `copyContents.copyWithoutHeaders` to `true` to copy only the raw content without any headers.
 

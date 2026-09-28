@@ -6,6 +6,7 @@ const DEFAULT_MAX_FILES = 100;
 const DEFAULT_MAX_FILE_SIZE = 1024 * 1024; // 1MB
 const DEFAULT_COPY_WITHOUT_HEADERS = false;
 export const DEFAULT_HEADER_FORMAT = '--- File: {path} ---';
+const DEFAULT_INCLUDE_FILE_TREE = true;
 
 export interface CopyContentsConfig {
     extensions: string[];
@@ -14,6 +15,7 @@ export interface CopyContentsConfig {
     maxFileSize: number;
     copyWithoutHeaders: boolean;
     headerFormat: string;
+    includeFileTree: boolean;
 }
 
 export function getConfig(): CopyContentsConfig {
@@ -27,5 +29,6 @@ export function getConfig(): CopyContentsConfig {
         maxFileSize: config.get<number>('maxFileSize', DEFAULT_MAX_FILE_SIZE),
         copyWithoutHeaders: config.get<boolean>('copyWithoutHeaders', DEFAULT_COPY_WITHOUT_HEADERS),
         headerFormat: config.get<string>('headerFormat', DEFAULT_HEADER_FORMAT),
+        includeFileTree: config.get<boolean>('includeFileTree', DEFAULT_INCLUDE_FILE_TREE),
     };
 }
